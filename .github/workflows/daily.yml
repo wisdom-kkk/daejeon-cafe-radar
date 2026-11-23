@@ -1,0 +1,46 @@
+name: 대전 카페 레이더 매일 수집
+
+on:
+  schedule:
+    - cron: "17 0 * * *"   # 매일 오전 9시 17분 (한국시간) - GitHub 사정으로 몇 분~수십 분 늦을 수 있음
+  workflow_dispatch:        # Actions 탭에서 'Run workflow'로 바로 실행
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cafe-radar
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 데이터 수집
+        env:
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          SEOGU_FOOTFALL_URL: ${{ secrets.SEOGU_FOOTFALL_URL }}
+          NAVER_API_HUB: ${{ secrets.NAVER_API_HUB }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+        run: python collector/collect.py
+
+      - name: 결과 저장
+        if: always()
+        run: |
+          git config user.name "cafe-radar-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A docs data/store
+          git diff --cached --quiet || git commit -m "데이터 갱신 $(TZ=Asia/Seoul date +%F)"
+          git push
